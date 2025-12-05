@@ -4,10 +4,9 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# توکن بات رو اینجا بذار
 BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 
-# همه ۳۱ مرکز استان ایران (مختصات دقیق)
+# همه ۳۱ مرکز استان + چند شهر مهم
 CITIES = {
     "اراک": (34.0954, 49.7013), "اردبیل": (38.2500, 48.3000), "ارومیه": (37.5553, 45.0750),
     "اصفهان": (32.6539, 51.6660), "اهواز": (31.3183, 48.6706), "ایلام": (33.6375, 46.4156),
@@ -15,7 +14,7 @@ CITIES = {
     "بیرجند": (32.8667, 59.2167), "تبریز": (38.0667, 46.3000), "تهران": (35.7219, 51.3347),
     "خرم‌آباد": (33.4878, 48.3558), "رشت": (37.2808, 49.5832), "زاهدان": (29.4964, 60.8629),
     "زنجان": (36.6667, 48.4833), "ساری": (36.5633, 53.0600), "سمنان": (35.5769, 53.3922),
- "سنندج": (35.3219, 46.9925), "شهرکرد": (32.3256, 50.8644), "شیراز": (29.5926, 52.5836),
+    "سنندج": (35.3219, 46.9925), "شهرکرد": (32.3256, 50.8644), "شیراز": (29.5926, 52.5836),
     "قزوین": (36.2688, 50.0041), "قم": (34.6399, 50.8759), "کرج": (35.8400, 50.9391),
     "کرمان": (30.2833, 57.0833), "کرمانشاه": (34.3142, 47.0650), "گرگان": (36.8387, 54.4346),
     "مشهد": (36.2970, 59.6061), "همدان": (34.7992, 48.5147), "یاسوج": (30.6667, 51.5833),
@@ -24,23 +23,25 @@ CITIES = {
 
 logging.basicConfig(level=logging.INFO)
 
-# نام‌های دقیق – از preferrableMaghtib استفاده می‌کنیم (اذان مغرب شرعی)
 PRAYER_NAMES = {
     "imsak": "الإمساك (امساک)",
     "fajr": "الفجر (اذان صبح)",
     "sunrise": "الشروق (طلوع آفتاب)",
     "dhuhr": "الظهر (اذان ظهر)",
     "aasr": "العصر (اذان عصر)",
-    "preferrableMaghtib": "المغرب (اذان مغرب)",  # درست شد! (17:06)
+    "maghrib": "المغرب (اذان مغرب)",   # درست از ماهانه
     "midnight": "منتصف الليل (نیمه‌شب شرعی)"
 }
 
-def get_prayer_times(lat: float, lon: float):
+def get_today_prayer_from_monthly(lat: float, lon: float):
+    """از API ماهانه فقط روز جاری رو می‌گیره"""
     today = datetime.now()
-    url = "https://www.praytime-almahdyoon.com/api/public/prayertimes/day"
+    url = "https://www.praytime-almahdyoon.com/api/public/prayertimes/month"
     params = {
-        "day": today.day, "month": today.month, "year": today.year,
-        "latitude": lat, "longitude": lon, "timezone": 3.5, "languageCode": "en"
+        "languageCode": "en",
+        "latitude": lat,
+        "longitude": lon,
+        "timezone": 3.5
     }
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -54,14 +55,15 @@ def get_prayer_times(lat: float, lon: float):
         session.get("https://www.praytime-almahdyoon.com/", headers=headers, timeout=10)
         r = session.get(url, params=params, headers=headers, timeout=15)
         if r.status_code == 200:
-            data = r.json()
-            if "imsak" in data:
-                return data
+            monthly_data = r.json()
+            for day_data in monthly_data.get("days", []):
+                if day_data.get("day") == today.day:
+                    return day_data  # فقط امروز رو برمی‌گردونه
     except Exception as e:
-        logging.error(f"خطا: {e}")
+        logging.error(f"خطا در API ماهانه: {e}")
     return None
 
-# /start — دکمه همه استان‌ها (۳ تایی)
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cities = sorted(CITIES.keys())
     keyboard = []
@@ -87,7 +89,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(f"در حال دریافت اوقات شرعی {city}...")
 
-    data = get_prayer_times(lat, lon)
+    data = get_today_prayer_from_monthly(lat, lon)
 
     if not data:
         await query.edit_message_text("خطا در دریافت اطلاعات. چند دقیقه دیگه امتحان کن.")
@@ -96,7 +98,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date = data.get("date", datetime.now().strftime("%d/%m/%Y"))
 
     msg = f"اوقات شرعی امروز {city}\n{date}\n\n"
-    order = ["imsak", "fajr", "sunrise", "dhuhr", "aasr", "preferrableMaghtib", "midnight"]
+    order = ["imsak", "fajr", "sunrise", "dhuhr", "aasr", "maghrib", "midnight"]
     for key in order:
         if key in data and data[key]:
             msg += f"{PRAYER_NAMES[key]}: {data[key]}\n"
@@ -107,7 +109,7 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
-    print("ربات اوقات شرعی — همه استان‌ها + مغرب درست — فعال شد!")
+    print("ربات اوقات شرعی — از API ماهانه (همیشه کار می‌کنه) — فعال شد!")
     app.run_polling()
 
 if __name__ == "__main__":

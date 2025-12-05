@@ -1,11 +1,12 @@
 import logging
 import requests
 from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 
+# همه ۳۱ مرکز استان
 CITIES = {
     "اراک": (34.0807, 49.7013), "اردبیل": (38.2500, 48.3000), "ارومیه": (37.5553, 45.0750),
     "اصفهان": (32.6539, 51.6660), "اهواز": (31.3183, 48.6706), "ایلام": (33.6375, 46.4156),
@@ -22,20 +23,18 @@ CITIES = {
 
 logging.basicConfig(level=logging.INFO)
 
-# نام‌های فارسی — مغرب واقعی + اذان مغرب دستی
 PRAYER_NAMES = {
     "imsak": "الإمساك (امساک)",
     "fajr": "الفجر (اذان صبح)",
     "sunrise": "الشروق (طلوع آفتاب)",
     "dhuhr": "الظهر (اذان ظهر)",
     "aasr": "العصر (اذان عصر)",
-    "sunset": "غروب خورشید",                    # از API میاد (مثلاً 16:51)
-    "maghrib_manual": "المغرب (اذان مغرب)",     # دستی: غروب + 15 دقیقه
+    "sunset": "غروب خورشید",
+    "maghrib_manual": "المغرب (اذان مغرب)",   # دستی: غروب + 15 دقیقه
     "midnight": "منتصف الليل (نیمه‌شب شرعی)"
 }
 
 def add_minutes(time_str: str, minutes: int = 15) -> str:
-    """به زمان (مثل 16:51) چند دقیقه اضافه می‌کنه"""
     try:
         h, m = map(int, time_str.split(":"))
         total = h * 60 + m + minutes
@@ -66,16 +65,33 @@ def get_prayer_times(lat: float, lon: float):
         if r.status_code == 200:
             data = r.json()
             if "imsak" in data:
-                # اضافه کردن دستی اذان مغرب = غروب + 15 دقیقه
                 if "maghrib" in data:
-                    data["sunset"] = data["maghrib"]  # غروب نجومی
-                    data["maghrib_manual"] = add_minutes(data["maghrib"], 15)  # اذان مغرب شرعی
+                    data["sunset"] = data["maghrib"]
+                    data["maghrib_manual"] = add_minutes(data["maghrib"], 15)
                 return data
     except Exception as e:
         logging.error(f"خطا: {e}")
     return None
 
+# کیبورد اصلی — فقط دکمه "انتخاب شهر"
+main_keyboard = ReplyKeyboardMarkup(
+    [[KeyboardButton("انتخاب شهر")]], 
+    resize_keyboard=True
+)
+
+# پیام خوش‌آمدگویی
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "به ربات دریافت اوقات شرعی روزانه خوش آمدید\n\n"
+        "اطلاعات بر پایه سایت المهدیون میباشد.",
+        reply_markup=main_keyboard
+    )
+
+# وقتی کاربر "انتخاب شهر" رو زد
+async def show_cities(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text != "انتخاب شهر":
+        return
+    
     cities = sorted(CITIES.keys())
     keyboard = []
     row = []
@@ -84,12 +100,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if i % 3 == 0 or i == len(cities):
             keyboard.append(row)
             row = []
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "سلام! اوقات شرعی دقیق praytime-almahdyoon.com\n\nشهر مورد نظرت رو انتخاب کن:",
-        reply_markup=reply_markup
-    )
+    await update.message.reply_text("شهر مورد نظرت رو انتخاب کن:", reply_markup=reply_markup)
 
+# وقتی شهر انتخاب شد
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -110,16 +125,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order = ["imsak", "fajr", "sunrise", "dhuhr", "aasr", "sunset", "maghrib_manual", "midnight"]
     for key in order:
         if key in data and data[key]:
-            name = PRAYER_NAMES.get(key, key)
-            msg += f"{name}: {data[key]}\n"
+            msg += f"{PRAYER_NAMES.get(key, key)}: {data[key]}\n"
 
     await query.edit_message_text(msg.strip())
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, show_cities))
     app.add_handler(CallbackQueryHandler(button_handler))
-    print("ربات اوقات شرعی — با اذان مغرب دستی (غروب + 15 دقیقه) — فعال شد!")
+    print("ربات اوقات شرعی — نسخه نهایی با کیبورد دائمی — فعال شد!")
     app.run_polling()
 
 if __name__ == "__main__":

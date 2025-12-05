@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 
-# همه ۳۱ مرکز استان — مختصات دقیق
+# همه ۳۱ مرکز استان
 CITIES = {
     "اراک": (34.0807, 49.7013), "اردبیل": (38.2500, 48.3000), "ارومیه": (37.5553, 45.0750),
     "اصفهان": (32.6539, 51.6660), "اهواز": (31.3183, 48.6706), "ایلام": (33.6375, 46.4156),
@@ -29,15 +29,19 @@ PRAYER_NAMES = {
     "sunrise": "الشروق (طلوع آفتاب)",
     "dhuhr": "الظهر (اذان ظهر)",
     "aasr": "العصر (اذان عصر)",
-    "maghrib": "المغرب (اذان مغرب)",   # درست و شرعی
+    "maghrib": "المغرب (اذان مغرب)",
     "midnight": "منتصف الليل (نیمه‌شب شرعی)"
 }
 
-def get_today_from_monthly(lat: float, lon: float):
-    """از API ماهانه فقط امروز رو می‌گیره — همیشه کار می‌کنه"""
+def get_today_prayer(lat: float, lon: float):
     today = datetime.now()
     url = "https://www.praytime-almahdyoon.com/api/public/prayertimes/month"
-    params = {"languageCode": "en", "latitude": lat, "longitude": lon, "timezone": 3.5}
+    params = {
+        "languageCode": "en",
+        "latitude": lat,
+        "longitude": lon,
+        "timezone": 3.5
+    }
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "application/json, text/plain, */*",
@@ -48,12 +52,23 @@ def get_today_from_monthly(lat: float, lon: float):
     try:
         session = requests.Session()
         session.get("https://www.praytime-almahdyoon.com/", headers=headers, timeout=10)
-        r = session.get(url, params=params, headers=headers, timeout=15)
-        if r.status_code == 200:
-            data = r.json()
-            for day in data.get("days", []):
-                if day.get("day") == today.day:
-                    return day
+        r = session.get(url, params=params, headers=headers, timeout=20)
+
+        if r.status_code != 200:
+            return None
+
+        json_data = r.json()
+
+        # گاهی "days" یک لیست هست، گاهی داخل یک دیکشنری
+        days_list = json_data.get("days") if isinstance(json_data, dict) else json_data
+
+        if not isinstance(days_list, list):
+            return None
+
+        for day in days_list:
+            if isinstance(day, dict) and day.get("day") == today.day:
+                return day
+
     except Exception as e:
         logging.error(f"خطا: {e}")
     return None
@@ -81,10 +96,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(f"در حال دریافت اوقات شرعی {city}...")
 
-    data = get_today_from_monthly(lat, lon)
+    data = get_today_prayer(lat, lon)
 
     if not data:
-        await query.edit_message_text("خطا در دریافت اطلاعات. چند دقیقه دیگه امتحان کن.")
+        await query.edit_message_text("خطا در دریافت اطلاعات. چند دقیقه دیگه امتحان کن یا VPN بزن.")
         return
 
     date = data.get("date", datetime.now().strftime("%d/%m/%Y"))
@@ -101,7 +116,7 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
-    print("ربات اوقات شرعی — نسخه نهایی و بدون خطا — فعال شد!")
+    print("ربات اوقات شرعی — نسخه نهایی بدون خطا — فعال شد!")
     app.run_polling()
 
 if __name__ == "__main__":

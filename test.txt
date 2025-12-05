@@ -4,24 +4,24 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# توکن بات رو اینجا بذار
+# توکن بات
 BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 
-# مختصات تهران (از خود سایت)
 LAT = 35.7218583
 LON = 51.3346954
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-# نام نمازها (دقیقاً مطابق JSON واقعی)
+# نام‌های فارسی دقیق (با اضافه شدن غروب خورشید)
 PRAYER_NAMES = {
     "imsak": "امساک",
     "fajr": "اذان صبح",
     "sunrise": "طلوع آفتاب",
     "dhuhr": "اذان ظهر",
     "aasr": "اذان عصر",
-    "maghrib": "اذان مغرب",
+    "sunset": "غروب خورشید",         # ← غروب آفتاب (قبل از اذان مغرب)
+    "maghrib": "اذان مغرب",           # ← شروع نماز مغرب
+    "maghrib_fadilah": "فضیلت مغرب", # ← پایان فضیلت نماز مغرب
     "midnight": "نیمه‌شب شرعی"
 }
 
@@ -38,7 +38,7 @@ def get_prayer_times():
         "languageCode": "en"
     }
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "application/json, text/plain, */*",
         "Referer": "https://www.praytime-almahdyoon.com/",
         "Origin": "https://www.praytime-almahdyoon.com",
@@ -48,15 +48,14 @@ def get_prayer_times():
 
     try:
         session = requests.Session()
-        session.get("https://www.praytime-almahdyoon.com/", headers=headers, timeout=10)  # گرم کردن
+        session.get("https://www.praytime-almahdyoon.com/", headers=headers, timeout=10)
         r = session.get(url, params=params, headers=headers, timeout=15)
-        
         if r.status_code == 200:
             data = r.json()
             if "imsak" in data:
                 return data
     except Exception as e:
-        logger.error(f"خطا: {e}")
+        logging.error(f"خطا: {e}")
     return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -66,27 +65,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = get_prayer_times()
 
     if not data:
-        await update.message.reply_text(
-            "خطا در دریافت اطلاعات از سایت 😔\n\n"
-            "چند دقیقه دیگه دوباره /start بزن یا VPN رو چک کن."
-        )
+        await update.message.reply_text("خطا در دریافت اطلاعات. چند دقیقه دیگه دوباره /start بزن.")
         return
 
-    date = data.get("date", f"{datetime.now():%d/%m/%Y}")
+    date = data.get("date", datetime.now().strftime("%d/%m/%Y"))
 
     msg = f"اوقات شرعی امروز تهران\n"
     msg += f"{date}\n\n"
-    order = ["imsak", "fajr", "sunrise", "dhuhr", "aasr", "maghrib", "midnight"]
+
+    # ترتیب استاندارد (با غروب، مغرب و فضیلت)
+    order = ["imsak", "fajr", "sunrise", "dhuhr", "aasr", "sunset", "maghrib", "maghrib_fadilah", "midnight"]
     for key in order:
         if key in data and data[key]:
-            msg += f"{PRAYER_NAMES[key]}: {data[key]}\n"
+            name = PRAYER_NAMES.get(key, key)
+            msg += f"{name}: {data[key]}\n"
 
     await update.message.reply_text(msg.strip())
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    print("بات آماده است – فقط /start بزن!")
+    print("بات اوقات شرعی تهران (با غروب، مغرب و فضیلت) فعال شد!")
     app.run_polling()
 
 if __name__ == "__main__":

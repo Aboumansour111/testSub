@@ -1,6 +1,6 @@
 import logging
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
@@ -22,15 +22,28 @@ CITIES = {
 
 logging.basicConfig(level=logging.INFO)
 
+# نام‌های فارسی — مغرب واقعی + اذان مغرب دستی
 PRAYER_NAMES = {
     "imsak": "الإمساك (امساک)",
     "fajr": "الفجر (اذان صبح)",
     "sunrise": "الشروق (طلوع آفتاب)",
     "dhuhr": "الظهر (اذان ظهر)",
     "aasr": "العصر (اذان عصر)",
-    "maghrib": "المغرب (اذان مغرب)",   # درست — دقیقاً همون چیزی که تو سایت هست
+    "sunset": "غروب خورشید",                    # از API میاد (مثلاً 16:51)
+    "maghrib_manual": "المغرب (اذان مغرب)",     # دستی: غروب + 15 دقیقه
     "midnight": "منتصف الليل (نیمه‌شب شرعی)"
 }
+
+def add_minutes(time_str: str, minutes: int = 15) -> str:
+    """به زمان (مثل 16:51) چند دقیقه اضافه می‌کنه"""
+    try:
+        h, m = map(int, time_str.split(":"))
+        total = h * 60 + m + minutes
+        new_h = (total // 60) % 24
+        new_m = total % 60
+        return f"{new_h:02d}:{new_m:02d}"
+    except:
+        return "نامشخص"
 
 def get_prayer_times(lat: float, lon: float):
     today = datetime.now()
@@ -53,6 +66,10 @@ def get_prayer_times(lat: float, lon: float):
         if r.status_code == 200:
             data = r.json()
             if "imsak" in data:
+                # اضافه کردن دستی اذان مغرب = غروب + 15 دقیقه
+                if "maghrib" in data:
+                    data["sunset"] = data["maghrib"]  # غروب نجومی
+                    data["maghrib_manual"] = add_minutes(data["maghrib"], 15)  # اذان مغرب شرعی
                 return data
     except Exception as e:
         logging.error(f"خطا: {e}")
@@ -90,10 +107,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date = data.get("date", datetime.now().strftime("%d/%m/%Y"))
 
     msg = f"اوقات شرعی امروز {city}\n{date}\n\n"
-    order = ["imsak", "fajr", "sunrise", "dhuhr", "aasr", "maghrib", "midnight"]
+    order = ["imsak", "fajr", "sunrise", "dhuhr", "aasr", "sunset", "maghrib_manual", "midnight"]
     for key in order:
-        if key in data and data.get(key):
-            msg += f"{PRAYER_NAMES[key]}: {data[key]}\n"
+        if key in data and data[key]:
+            name = PRAYER_NAMES.get(key, key)
+            msg += f"{name}: {data[key]}\n"
 
     await query.edit_message_text(msg.strip())
 
@@ -101,7 +119,7 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
-    print("ربات اوقات شرعی — نهایی و بدون مشکل — فعال شد!")
+    print("ربات اوقات شرعی — با اذان مغرب دستی (غروب + 15 دقیقه) — فعال شد!")
     app.run_polling()
 
 if __name__ == "__main__":

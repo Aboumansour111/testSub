@@ -2,11 +2,12 @@ import logging
 import requests
 from datetime import datetime
 import jdatetime
+import pytz  # ← اضافه شد برای ساعت دقیق ایران
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram import error as telegram_error
 
-# ←←← توکن باتت رو اینجا بذار ←←←
+# توکن بات
 BOT_TOKEN = "8281688212:AAGRreHFJMa3hnDvv8Wsaxy4elGKui1ETDE"
 
 # همه شهرها با مختصات دقیق
@@ -43,7 +44,7 @@ PRAYER_NAMES = {
     "midnight": "منتصف الليل (نیمه‌شب شرعی)"
 }
 
-# تنظیم دستی دقیقه اضافه برای شهرهای خاص (جلو = -1, عقب = +1)
+# تنظیم دستی دقیقه اضافه برای شهرهای خاص
 MANUAL_ADJUST = {
     "ارومیه": 0.0,
     "دزفول": 0.0,
@@ -62,7 +63,6 @@ MANUAL_ADJUST = {
     "شیراز": -1.0,
 }
 
-
 def get_minutes_based_on_lat(lat: float) -> float:
     if lat > 37:
         return 15.9
@@ -75,7 +75,6 @@ def get_minutes_based_on_lat(lat: float) -> float:
     else:
         return 14.0
 
-
 def add_minutes(time_str: str, minutes: float) -> str:
     try:
         h, m = map(int, time_str.split(":"))
@@ -85,7 +84,6 @@ def add_minutes(time_str: str, minutes: float) -> str:
         return f"{new_h:02d}:{new_m:02d}"
     except:
         return "نامشخص"
-
 
 def get_prayer_times(lat: float, lon: float, city: str):
     today = datetime.now()
@@ -103,8 +101,7 @@ def get_prayer_times(lat: float, lon: float, city: str):
 
     try:
         session = requests.Session()
-        session.get("https://www.praytime-almahdyoon.com/",
-                    headers=headers, timeout=10)
+        session.get("https://www.praytime-almahdyoon.com/", headers=headers, timeout=10)
         r = session.get(url, params=params, headers=headers, timeout=20)
         if r.status_code == 200:
             data = r.json()
@@ -114,24 +111,19 @@ def get_prayer_times(lat: float, lon: float, city: str):
                     base_minutes = get_minutes_based_on_lat(lat)
                     adjust = MANUAL_ADJUST.get(city, 0.0)
                     final_minutes = base_minutes + adjust
-                    data["maghrib_manual"] = add_minutes(
-                        data["maghrib"], final_minutes)
+                    data["maghrib_manual"] = add_minutes(data["maghrib"], final_minutes)
                 return data
     except Exception as e:
         logging.error(f"خطا: {e}")
     return None
 
-
-main_keyboard = ReplyKeyboardMarkup(
-    [[KeyboardButton("انتخاب شهر")]], resize_keyboard=True)
-
+main_keyboard = ReplyKeyboardMarkup([[KeyboardButton("انتخاب شهر")]], resize_keyboard=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "به ربات دریافت اوقات شرعی روزانه خوش آمدید\n\nاطلاعات بر پایه سایت المهدیون میباشد.",
         reply_markup=main_keyboard
     )
-
 
 async def show_cities(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text != "انتخاب شهر":
@@ -146,7 +138,6 @@ async def show_cities(update: Update, context: ContextTypes.DEFAULT_TYPE):
             row = []
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("شهر مورد نظرت رو انتخاب کن:", reply_markup=reply_markup)
-
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -166,28 +157,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("خطا در دریافت اطلاعات. چند دقیقه دیگه امتحان کن.")
         return
 
-    jalali_date = jdatetime.datetime.now()
-    persian_date = jalali_date.strftime("%d %B %Y")
+    # تاریخ شمسی دقیق بر اساس ساعت ایران (حتی روی سرور خارج از کشور)
+    tehran_tz = pytz.timezone('Asia/Tehran')
+    now_tehran = datetime.now(tehran_tz)
+    jalali_date = jdatetime.datetime.fromgregorian(datetime=now_tehran)
+    persian_date = jalali_date.strftime("%d %B %Y")  # مثل: ۲۲ آذر ۱۴۰۳
 
     msg = f"اوقات شرعی امروز {city}\n{persian_date}\n\n"
-    order = ["imsak", "fajr", "sunrise", "dhuhr",
-             "aasr", "sunset", "maghrib_manual", "midnight"]
+    order = ["imsak", "fajr", "sunrise", "dhuhr", "aasr", "sunset", "maghrib_manual", "midnight"]
     for key in order:
         if key in data and data[key]:
             msg += f"{PRAYER_NAMES.get(key, key)}: {data[key]}\n"
 
     await query.edit_message_text(msg.strip())
 
-
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND, show_cities))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, show_cities))
     app.add_handler(CallbackQueryHandler(button_handler))
     print("ربات اوقات شرعی — نسخه نهایی و بدون خطا — فعال شد!")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()

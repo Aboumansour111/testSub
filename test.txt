@@ -6,8 +6,10 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Keyboar
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram import error as telegram_error
 
+# ←←← توکن باتت رو اینجا بذار ←←←
 BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 
+# همه شهرها با مختصات دقیق
 CITIES = {
     "اراک": (34.0807, 49.7013), "اردبیل": (38.2500, 48.3000), "ارومیه": (37.5531, 45.0756),
     "اصفهان": (32.6539, 51.6660), "اهواز": (31.3183, 48.6706), "ایلام": (33.6341, 46.4132),
@@ -37,15 +39,17 @@ PRAYER_NAMES = {
     "dhuhr": "الظهر (اذان ظهر)",
     "aasr": "العصر (اذان عصر)",
     "sunset": "غروب خورشید",
-    "maghrib_manual": "المغرب (اذان مغرب)",   # ← درست شد
+    "maghrib_manual": "المغرب (اذان مغرب)",
     "midnight": "منتصف الليل (نیمه‌شب شرعی)"
 }
 
-# تنظیم دستی دقیقه اضافه (جلو = -1, عقب = +1)
+# تنظیم دستی دقیقه اضافه برای شهرهای خاص (جلو = -1, عقب = +1)
 MANUAL_ADJUST = {
-    "ارومیه": +1.0, "بجنورد": -1.0, "ایلام": -1.0, "بیرجند": +1.0,
-    "بندرعباس": -1.0, "تهران": -1.0, "زنجان": -1.0, "زاهدان": -1.0,
-    "ساری": -1.0, "قزوین": -1.0, "شیراز": -1.0, "میانرود": +1.0, "دزفول": +1.0,
+    "ارومیه": -1.0,
+    "دزفول": -1.0,
+    "میانرود": -1.0,
+    "بجنورد": +1.0,
+    "زنجان": +1.0,
 }
 
 def get_minutes_based_on_lat(lat: float) -> float:
@@ -96,7 +100,7 @@ def get_prayer_times(lat: float, lon: float, city: str):
                     base_minutes = get_minutes_based_on_lat(lat)
                     adjust = MANUAL_ADJUST.get(city, 0.0)
                     final_minutes = base_minutes + adjust
-                    data["maghrib_manual"] = add_minutes(data["maghrib"], final_minutes)  # ← درست شد
+                    data["maghrib_manual"] = add_minutes(data["maghrib"], final_minutes)
                 return data
     except Exception as e:
         logging.error(f"خطا: {e}")

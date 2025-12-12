@@ -1,14 +1,13 @@
 import logging
 import requests
 from datetime import datetime
-import jdatetime  # ← این خط رو اضافه کردم
+import jdatetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram import error as telegram_error
 
 BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 
-# همه ۳۱ مرکز استان + شهرهای اضافی — مختصات دقیق
 CITIES = {
     "اراک": (34.0807, 49.7013), "اردبیل": (38.2500, 48.3000), "ارومیه": (37.5553, 45.0750),
     "اصفهان": (32.6539, 51.6660), "اهواز": (31.3183, 48.6706), "ایلام": (33.6375, 46.4156),
@@ -44,15 +43,15 @@ PRAYER_NAMES = {
 
 def get_minutes_based_on_lat(lat: float) -> float:
     if lat > 37:
-        return 16.0      # اردبیل، تبریز، رشت
+        return 15.9
     elif lat > 35:
-        return 15.5      # تهران، مشهد
+        return 15.4
     elif lat > 33:
-        return 15.0      # اراک، قم
+        return 15.0
     elif lat > 30:
-        return 14.5      # شیراز، کرمان
+        return 14.5
     else:
-        return 14.0      # بوشهر، بندرعباس
+        return 14.0
 
 def add_minutes(time_str: str, minutes: float) -> str:
     try:
@@ -134,7 +133,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("خطا در دریافت اطلاعات. چند دقیقه دیگه امتحان کن.")
         return
 
-    # تاریخ شمسی
     jalali_date = jdatetime.datetime.now()
     persian_date = jalali_date.strftime("%d %B %Y")
 
@@ -151,8 +149,9 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, show_cities))
     app.add_handler(CallbackQueryHandler(button_handler))
-    print("ربات اوقات شرعی — نسخه نهایی بدون خطا — فعال شد!")
+    print("ربات اوقات شرعی — نسخه نهایی و بدون خطا — فعال شد!")
     app.run_polling()
 
+# ←←← این خط آخر دقیقاً درست نوشته شده ←←←
 if __name__ == "__main__":
     main()

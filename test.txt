@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Keyboar
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram import error as telegram_error
 
-BOT_TOKEN = "Your_Token"
+BOT_TOKEN = "Test"
 
 CITIES = {
     "اراک": (34.0873496, 49.7022387), "اردبیل": (38.24317569999999, 48.2976116), "ارومیه": (37.5498061, 45.0786282),
